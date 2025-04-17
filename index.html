@@ -1,0 +1,411 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Controle Financeiro</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+    body {
+      font-family: 'Inter', sans-serif;
+      padding: 40px;
+      background: #f4f6f9;
+      color: #1e293b;
+      max-width: 1000px;
+      margin: auto;
+    }
+    h1 {
+      color: #2563eb;
+      font-size: 32px;
+      margin-bottom: 24px;
+    }
+    form, table {
+      background: white;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+      margin-bottom: 32px;
+      border: 1px solid #e2e8f0;
+    }
+    input, select, button {
+      margin: 6px 0;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #cbd5e1;
+      font-size: 14px;
+      background: #fff;
+      width: 100%;
+    }
+    button {
+      background: #2563eb;
+      color: white;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .botoes {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .resumo {
+      padding: 12px;
+      border-radius: 8px;
+      margin: 10px 0;
+      font-weight: bold;
+    }
+    .positivo { color: green; background: #e6ffed; }
+    .negativo { color: red; background: #ffeaea; }
+    th { background: #2563eb; color: white; padding: 8px; }
+    td { text-align: center; padding: 6px; }
+    @media print {
+      body { margin: 10mm; font-size: 12px; color: #000; background: #fff; }
+      form, .botoes, h1 { display: none; }
+      table { font-size: 11px; border-collapse: collapse; width: 100%; }
+      th, td { border: 1px solid #444; padding: 4px; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Controle Financeiro</h1>
+
+  <div style="margin-bottom: 20px;">
+    <label for="filtroBusca"><strong>🔍 Filtro:</strong></label>
+    <input type="text" id="filtroBusca" placeholder="Buscar por categoria, autor, tipo ou descrição"
+      oninput="aplicarFiltro()" style="width: 100%; padding: 10px; border: 1px solid #ccc;
+      border-radius: 8px; font-size: 14px; margin-top: 6px;" />
+  </div>
+
+  <form id="formLancamento">
+    <label>Responsável:</label>
+    <select id="autor" required>
+      <option value="Wendel">Wendel</option>
+      <option value="Joseane">Joseane</option>
+    </select>
+
+    <label>Data:</label>
+    <input type="date" id="data" required />
+
+    <label>Tipo:</label>
+    <select id="tipo" required>
+      <option value="Receita">Receita</option>
+      <option value="Despesa">Despesa</option>
+    </select>
+
+    <label>Categoria:</label>
+    <div style="display: flex; gap: 6px; align-items: center;">
+      <select id="categoria" required style="width: 160px;"></select>
+      <input type="text" id="novaCategoria" placeholder="Nova" style="width: 120px;">
+      <button type="button" onclick="adicionarCategoria()" style="width: 36px;">➕</button>
+    </div>
+
+    <label>Valor:</label>
+    <input type="text" id="valor" required placeholder="R$ 0,00" oninput="mascaraMoeda(this)" />
+
+    <label>Descrição:</label>
+    <input type="text" id="descricao" />
+
+    <button type="submit">Salvar Lançamento</button>
+  </form>
+
+  <div class="botoes">
+    <button onclick="gerarRelatorioPDF()">📄 Gerar PDF</button>
+    <button onclick="window.print()">🖨️ Imprimir Página</button>
+    <button onclick="limparLancamentos()">🗑️ Limpar Todos</button>
+  </div>
+
+  <div class="resumo positivo" id="receitas">Total de Receitas: R$ 0,00</div>
+  <div class="resumo negativo" id="despesas">Total de Despesas: R$ 0,00</div>
+  <div class="resumo" id="saldo">Saldo Atual: R$ 0,00</div>
+
+  <table id="tabelaLancamentos">
+    <thead>
+      <tr>
+        <th>Autor</th>
+        <th>Data</th>
+        <th>Tipo</th>
+        <th>Categoria</th>
+        <th>Valor</th>
+        <th>Descrição</th>
+        <th>Ações</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div style="margin-top: 40px;">
+    <h2>📊 Comparativo de Receitas e Despesas</h2>
+    <canvas id="graficoTorre" height="120"></canvas>
+  </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js">
+  const ctxTorre = document.getElementById('graficoTorre').getContext('2d');
+  let graficoTorre;
+
+  function atualizarGrafico() {
+    let totalReceita = 0;
+    let totalDespesa = 0;
+    const filtro = document.getElementById("filtroBusca").value.toLowerCase();
+    lancamentos.forEach(l => {
+      const busca = [l.categoria, l.tipo, l.descricao, l.autor].join(" ").toLowerCase();
+      if (filtro && !busca.includes(filtro)) return;
+      const valor = parseFloat(l.valor);
+      if (l.tipo === "Receita") totalReceita += valor;
+      else if (l.tipo === "Despesa") totalDespesa += valor;
+    });
+
+    if (graficoTorre) graficoTorre.destroy();
+    graficoTorre = new Chart(ctxTorre, {
+      type: 'bar',
+      data: {
+        labels: ['Receitas', 'Despesas'],
+        datasets: [{
+          label: 'Total R$',
+          data: [totalReceita, totalDespesa],
+          backgroundColor: ['#16a34a', '#dc2626']
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => "R$ " + ctx.raw.toFixed(2).replace(".", ",") } }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: function (value) {
+                return 'R$ ' + value.toFixed(2).replace(".", ",");
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  const originalAtualizarTabela = atualizarTabela;
+  atualizarTabela = function (filtro = "") {
+    originalAtualizarTabela(filtro);
+    atualizarGrafico();
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  let lancamentos = JSON.parse(localStorage.getItem("lancamentos")) || [];
+  let categorias = JSON.parse(localStorage.getItem("categorias")) || [];
+  let editandoIndex = null;
+
+  const form = document.getElementById("formLancamento");
+
+  function carregarCategorias() {
+    const select = document.getElementById("categoria");
+    select.innerHTML = "";
+    categorias.forEach(cat => {
+      const opt = document.createElement("option");
+      opt.value = cat;
+      opt.textContent = cat;
+      select.appendChild(opt);
+    });
+  }
+
+  function adicionarCategoria() {
+    const nova = document.getElementById("novaCategoria").value.trim();
+    if (nova && !categorias.includes(nova)) {
+      categorias.push(nova);
+      localStorage.setItem("categorias", JSON.stringify(categorias));
+      carregarCategorias();
+      document.getElementById("novaCategoria").value = "";
+    }
+  }
+
+  function atualizarResumo() {
+    let saldo = 0, receitas = 0, despesas = 0;
+    lancamentos.forEach(l => {
+      const valor = parseFloat(l.valor);
+      if (l.tipo === "Receita") { receitas += valor; saldo += valor; }
+      else { despesas += valor; saldo -= valor; }
+    });
+    document.getElementById("receitas").textContent = "Total de Receitas: R$ " + receitas.toFixed(2).replace(".", ",");
+    document.getElementById("despesas").textContent = "Total de Despesas: R$ " + despesas.toFixed(2).replace(".", ",");
+    document.getElementById("saldo").textContent = "Saldo Atual: R$ " + saldo.toFixed(2).replace(".", ",");
+  }
+
+  function aplicarFiltro() {
+    const filtro = document.getElementById("filtroBusca").value.toLowerCase();
+    atualizarTabela(filtro);
+  }
+
+  function atualizarTabela(filtro = "") {
+    const tabela = document.querySelector("#tabelaLancamentos tbody");
+    tabela.innerHTML = "";
+    lancamentos.forEach((l, i) => {
+      const busca = [l.categoria, l.tipo, l.descricao, l.autor].join(" ").toLowerCase();
+      if (filtro && !busca.includes(filtro)) return;
+      const row = tabela.insertRow();
+      row.innerHTML = `
+        <td>${l.autor}</td>
+        <td>${l.data}</td>
+        <td>${l.tipo}</td>
+        <td>${l.categoria}</td>
+        <td>R$ ${parseFloat(l.valor).toFixed(2).replace(".", ",")}</td>
+        <td>${l.descricao}</td>
+        <td><button onclick="editar(${i})">✏️</button> <button onclick="excluir(${i})">🗑️</button></td>`;
+    });
+    atualizarResumo();
+    localStorage.setItem("lancamentos", JSON.stringify(lancamentos));
+  }
+
+  function editar(index) {
+    const l = lancamentos[index];
+    form.autor.value = l.autor;
+    form.data.value = l.data;
+    form.tipo.value = l.tipo;
+    form.categoria.value = l.categoria;
+    form.valor.value = "R$ " + parseFloat(l.valor).toFixed(2).replace(".", ",").replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1.");
+    form.descricao.value = l.descricao;
+    editandoIndex = index;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function excluir(index) {
+    if (confirm("Excluir este lançamento?")) {
+      lancamentos.splice(index, 1);
+      atualizarTabela();
+    }
+  }
+
+  function limparLancamentos() {
+    if (confirm("Deseja apagar todos os lançamentos?")) {
+      lancamentos = [];
+      atualizarTabela();
+    }
+  }
+
+  function gerarRelatorioPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.setFontSize(12);
+    doc.text("Relatório Financeiro", 10, 10);
+    let y = 20, receitas = 0, despesas = 0;
+    const filtro = document.getElementById("filtroBusca").value.toLowerCase();
+    let index = 1;
+    lancamentos.forEach(l => {
+      const linhaBusca = [l.categoria, l.tipo, l.descricao, l.autor].join(" ").toLowerCase();
+      if (filtro && !linhaBusca.includes(filtro)) return;
+      const valor = parseFloat(l.valor);
+      if (l.tipo === "Receita") receitas += valor; else despesas += valor;
+      const linha = `${index++}. ${l.data} | ${l.tipo} | ${l.autor} | ${l.categoria} | R$ ${valor.toFixed(2).replace(".", ",")} | ${l.descricao}`;
+      doc.text(linha, 10, y);
+      y += 8;
+      if (y > 270) { doc.addPage(); y = 10; }
+    });
+    y += 10;
+    doc.text("Total de Receitas: R$ " + receitas.toFixed(2).replace(".", ","), 10, y);
+    y += 8;
+    doc.text("Total de Despesas: R$ " + despesas.toFixed(2).replace(".", ","), 10, y);
+    y += 8;
+    doc.text("Saldo Final: R$ " + (receitas - despesas).toFixed(2).replace(".", ","), 10, y + 4);
+    doc.save("relatorio_financeiro.pdf");
+  }
+
+  function mascaraMoeda(campo) {
+    let valor = campo.value.replace(/\D/g, "");
+    valor = (parseFloat(valor) / 100).toFixed(2);
+    valor = "R$ " + valor.replace(".", ",").replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1.");
+    campo.value = valor;
+  }
+
+  function parseValorMoeda(valor) {
+    return parseFloat(valor.replace("R$ ", "").replace(/\./g, "").replace(",", "."));
+  }
+
+  form.addEventListener("submit", e => {
+    e.preventDefault();
+    const novo = {
+      autor: form.autor.value,
+      data: form.data.value,
+      tipo: form.tipo.value,
+      categoria: form.categoria.value,
+      valor: parseValorMoeda(form.valor.value),
+      descricao: form.descricao.value
+    };
+    if (editandoIndex !== null) {
+      lancamentos[editandoIndex] = novo;
+      editandoIndex = null;
+    } else {
+      lancamentos.push(novo);
+    }
+    form.reset();
+    form.autor.value = "Wendel";
+    form.data.valueAsDate = new Date();
+    carregarCategorias();
+    atualizarTabela();
+  });
+
+  window.onload = () => {
+    const hoje = new Date();
+    const ano = hoje.getFullYear();
+    const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+    const dia = String(hoje.getDate()).padStart(2, '0');
+    document.getElementById("data").value = `${ano}-${mes}-${dia}`;
+    carregarCategorias();
+    atualizarTabela();
+  };
+
+  const ctxTorre = document.getElementById('graficoTorre').getContext('2d');
+  let graficoTorre;
+
+  function atualizarGrafico() {
+    let totalReceita = 0;
+    let totalDespesa = 0;
+    const filtro = document.getElementById("filtroBusca").value.toLowerCase();
+    lancamentos.forEach(l => {
+      const busca = [l.categoria, l.tipo, l.descricao, l.autor].join(" ").toLowerCase();
+      if (filtro && !busca.includes(filtro)) return;
+      const valor = parseFloat(l.valor);
+      if (l.tipo === "Receita") totalReceita += valor;
+      else if (l.tipo === "Despesa") totalDespesa += valor;
+    });
+
+    if (graficoTorre) graficoTorre.destroy();
+    graficoTorre = new Chart(ctxTorre, {
+      type: 'bar',
+      data: {
+        labels: ['Receitas', 'Despesas'],
+        datasets: [{
+          label: 'Total R$',
+          data: [totalReceita, totalDespesa],
+          backgroundColor: ['#16a34a', '#dc2626']
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => "R$ " + ctx.raw.toFixed(2).replace(".", ",") } }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: function (value) {
+                return 'R$ ' + value.toFixed(2).replace(".", ",");
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  const originalAtualizarTabela = atualizarTabela;
+  atualizarTabela = function (filtro = "") {
+    originalAtualizarTabela(filtro);
+    atualizarGrafico();
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</body>
+</html>
